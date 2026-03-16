@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import glob
 import os
-from config import DATA_DIR, DATA_FILES, ENCODING
+from .config import DATA_DIR, DATA_FILES, ENCODING
 
 def load_and_combine_datasets(data_dir=DATA_DIR, files=DATA_FILES, encoding=ENCODING):
     """

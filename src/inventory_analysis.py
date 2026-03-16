@@ -5,7 +5,7 @@ Provides functions for inventory health assessment and recommendations.
 
 import pandas as pd
 import numpy as np
-from config import METRIC_THRESHOLDS
+from .config import METRIC_THRESHOLDS
 
 def calculate_stock_turnover(df, sales_col='quantity_sold', price_col='price',
                            time_period_days=30):

@@ -5,7 +5,7 @@ Provides functions for product scoring, ranking, and performance insights.
 
 import pandas as pd
 import numpy as np
-from config import METRIC_THRESHOLDS
+from .config import METRIC_THRESHOLDS
 
 def calculate_product_score(df, weights=None):
     """
