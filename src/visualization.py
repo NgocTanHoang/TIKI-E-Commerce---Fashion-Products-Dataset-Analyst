@@ -1,21 +1,97 @@
 """
 Visualization module for Tiki product data analysis.
 Provides reusable plotting functions for EDA and business insights.
+Enhanced with interactive Plotly charts and improved label handling.
 """
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
-from config import MAIN_CATEGORIES
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from .config import MAIN_CATEGORIES
 
 # Set style
 plt.style.use('seaborn-v0_8')
 sns.set_palette("husl")
 
+def _add_mean_median_lines(ax, data, orientation='vertical', color='red', linestyle='--', alpha=0.7):
+    """
+    Add mean and median reference lines to a plot.
+
+    Args:
+        ax: Matplotlib axis object
+        data: Data to calculate mean/median from
+        orientation: 'vertical' or 'horizontal'
+        color: Line color
+        linestyle: Line style
+        alpha: Transparency
+    """
+    mean_val = np.mean(data)
+    median_val = np.median(data)
+
+    if orientation == 'vertical':
+        ax.axvline(mean_val, color=color, linestyle=linestyle, alpha=alpha,
+                  label=f'Mean: {mean_val:.2f}')
+        ax.axvline(median_val, color='orange', linestyle=linestyle, alpha=alpha,
+                  label=f'Median: {median_val:.2f}')
+    else:  # horizontal
+        ax.axhline(mean_val, color=color, linestyle=linestyle, alpha=alpha,
+                  label=f'Mean: {mean_val:.2f}')
+        ax.axhline(median_val, color='orange', linestyle=linestyle, alpha=alpha,
+                  label=f'Median: {median_val:.2f}')
+
+def _handle_overlapping_labels(ax, rotation=45, ha='right'):
+    """
+    Handle overlapping x-axis labels by rotating them.
+
+    Args:
+        ax: Matplotlib axis object
+        rotation: Rotation angle in degrees
+        ha: Horizontal alignment ('left', 'center', 'right')
+    """
+    ax.tick_params(axis='x', rotation=rotation, ha=ha)
+    plt.tight_layout()
+
+def _create_horizontal_bar_chart(data, x_col, y_col, title, xlabel, ylabel,
+                                add_mean_line=True, figsize=(10, 8)):
+    """
+    Create a horizontal bar chart with optional mean line.
+
+    Args:
+        data: DataFrame with data
+        x_col: Column for x-axis values
+        y_col: Column for y-axis categories
+        title: Chart title
+        xlabel: X-axis label
+        ylabel: Y-axis label
+        add_mean_line: Whether to add mean reference line
+        figsize: Figure size tuple
+    """
+    plt.figure(figsize=figsize)
+
+    # Sort data for better visualization
+    data_sorted = data.sort_values(x_col, ascending=True)
+
+    bars = plt.barh(data_sorted[y_col], data_sorted[x_col])
+
+    if add_mean_line:
+        mean_val = data[x_col].mean()
+        plt.axvline(mean_val, color='red', linestyle='--', alpha=0.7,
+                   label=f'Mean: {mean_val:.2f}')
+
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
 def plot_price_distributions_by_category(df, category_col='main_category', price_col='price'):
     """
-    Plot price distributions across categories.
+    Plot price distributions across categories with mean/median lines.
 
     Args:
         df (pd.DataFrame): Input dataframe
@@ -31,7 +107,17 @@ def plot_price_distributions_by_category(df, category_col='main_category', price
     plt.xlabel('Price (VND)')
     plt.ylabel('Density')
     plt.legend()
+
+    # Add mean and median lines
+    overall_mean = df[price_col].mean()
+    overall_median = df[price_col].median()
+    plt.axvline(overall_mean, color='red', linestyle='--', alpha=0.7,
+               label=f'Overall Mean: {overall_mean:,.0f} VND')
+    plt.axvline(overall_median, color='orange', linestyle='--', alpha=0.7,
+               label=f'Overall Median: {overall_median:,.0f} VND')
+
     plt.xlim(0, df[price_col].quantile(0.95))  # Focus on main distribution
+    plt.legend()
     plt.show()
 
 def plot_rating_heatmaps(df, category_col='main_category', rating_col='rating_average', review_col='review_count'):
@@ -184,60 +270,327 @@ def plot_correlation_matrix(df, numeric_cols=None):
 
 def plot_category_performance(df, category_col='main_category', metrics=['rating_average', 'quantity_sold', 'price'], show=True):
     """
-    Plot performance metrics by category.
+    Plot performance metrics by category using horizontal bars with mean lines.
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+        category_col (str): Category column
+        metrics (list): List of metrics to plot
+        show (bool): Whether to display the plot
+    """
+    fig, axes = plt.subplots(len(metrics), 1, figsize=(12, 6*len(metrics)))
+
+    for i, metric in enumerate(metrics):
+        ax = axes[i] if len(metrics) > 1 else axes
+
+        # Calculate category means
+        category_means = df.groupby(category_col)[metric].mean().sort_values(ascending=True)
+
+        # Create horizontal bar chart
+        bars = ax.barh(category_means.index, category_means.values)
+
+        # Add mean line
+        overall_mean = df[metric].mean()
+        ax.axvline(overall_mean, color='red', linestyle='--', alpha=0.7,
+                  label=f'Overall Mean: {overall_mean:.2f}')
+
+        # Add median line
+        overall_median = df[metric].median()
+        ax.axvline(overall_median, color='orange', linestyle='--', alpha=0.7,
+                  label=f'Overall Median: {overall_median:.2f}')
+
+        ax.set_title(f'Average {metric.replace("_", " ").title()} by Category')
+        ax.set_xlabel(metric.replace('_', ' ').title())
+        ax.set_ylabel('Category')
+        ax.legend()
+
+        # Add value labels on bars
+        for j, v in enumerate(category_means.values):
+            ax.text(v + max(category_means.values) * 0.01, j, f'{v:.2f}',
+                   va='center', fontweight='bold')
+
+    plt.tight_layout()
+    if show:
+        plt.show()
+
+def create_eda_report(df, interactive=False):
+    """
+    Generate a comprehensive EDA visualization report.
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+        interactive (bool): Whether to use interactive Plotly charts
+    """
+    if interactive:
+        print("Generating Interactive EDA Visualization Report...")
+        create_interactive_eda_dashboard(df)
+    else:
+        print("Generating Static EDA Visualization Report...")
+
+        # Price distributions
+        plot_price_distributions_by_category(df)
+
+        # Rating heatmaps
+        plot_rating_heatmaps(df)
+
+        # Inventory vs performance
+        plot_inventory_vs_performance(df)
+
+        # Correlation matrix
+        numeric_cols = ['price', 'original_price', 'rating_average', 'review_count',
+                       'favourite_count', 'quantity_sold', 'discount_pct', 'composite_score']
+        available_cols = [col for col in numeric_cols if col in df.columns]
+        plot_correlation_matrix(df, available_cols)
+
+        # Category performance
+        plot_category_performance(df)
+
+        # Fulfillment impact
+        if 'fulfillment_type' in df.columns:
+            plot_fulfillment_impact(df)
+
+        # Time trends if date available
+        if 'date_created' in df.columns:
+            plot_sales_trends_over_time(df)
+
+    print("EDA report generation complete.")
+
+# ===== INTERACTIVE PLOTLY VISUALIZATIONS =====
+
+def plot_interactive_price_distribution(df, category_col='main_category', price_col='price'):
+    """
+    Create interactive price distribution plot with Plotly.
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+        category_col (str): Category column
+        price_col (str): Price column
+    """
+    fig = px.histogram(
+        df,
+        x=price_col,
+        color=category_col,
+        marginal="box",
+        title="Interactive Price Distribution by Category",
+        labels={price_col: "Price (VND)", category_col: "Category"},
+        opacity=0.7
+    )
+
+    # Add mean and median lines
+    mean_price = df[price_col].mean()
+    median_price = df[price_col].median()
+
+    fig.add_vline(
+        x=mean_price,
+        line_dash="dash",
+        line_color="red",
+        annotation_text=f"Mean: {mean_price:,.0f} VND",
+        annotation_position="top right"
+    )
+
+    fig.add_vline(
+        x=median_price,
+        line_dash="dash",
+        line_color="orange",
+        annotation_text=f"Median: {median_price:,.0f} VND",
+        annotation_position="top right"
+    )
+
+    fig.update_layout(
+        xaxis_title="Price (VND)",
+        yaxis_title="Count",
+        showlegend=True
+    )
+
+    fig.show()
+
+def plot_interactive_category_performance(df, category_col='main_category',
+                                        metrics=['rating_average', 'quantity_sold', 'price']):
+    """
+    Create interactive category performance comparison with Plotly.
 
     Args:
         df (pd.DataFrame): Input dataframe
         category_col (str): Category column
         metrics (list): List of metrics to plot
     """
-    fig, axes = plt.subplots(1, len(metrics), figsize=(5*len(metrics), 6))
+    # Calculate category statistics
+    category_stats = df.groupby(category_col)[metrics].agg(['mean', 'std']).round(2)
+    category_stats.columns = [f"{col[0]}_{col[1]}" for col in category_stats.columns]
+    category_stats = category_stats.reset_index()
+
+    # Create subplots
+    fig = make_subplots(
+        rows=len(metrics), cols=1,
+        subplot_titles=[f"Average {metric.replace('_', ' ').title()}" for metric in metrics],
+        vertical_spacing=0.1
+    )
+
+    colors = px.colors.qualitative.Set3
 
     for i, metric in enumerate(metrics):
-        ax = axes[i] if len(metrics) > 1 else axes
-        category_stats = df.groupby(category_col)[metric].agg(['mean', 'std', 'count'])
-        category_stats['mean'].plot(kind='bar', yerr=category_stats['std'], ax=ax, capsize=5)
-        ax.set_title(f'Average {metric.replace("_", " ").title()} by Category')
-        ax.set_xlabel('Category')
-        ax.set_ylabel(metric.replace('_', ' ').title())
-        ax.tick_params(axis='x', rotation=45)
+        mean_col = f"{metric}_mean"
+        std_col = f"{metric}_std"
 
-    plt.tight_layout()
-    plt.show()
+        fig.add_trace(
+            go.Bar(
+                x=category_stats[category_col],
+                y=category_stats[mean_col],
+                error_y=dict(type='data', array=category_stats[std_col]),
+                name=metric.replace('_', ' ').title(),
+                marker_color=colors[i % len(colors)],
+                showlegend=False
+            ),
+            row=i+1, col=1
+        )
 
-def create_eda_report(df):
+        # Add overall mean line
+        overall_mean = df[metric].mean()
+        fig.add_hline(
+            y=overall_mean,
+            line_dash="dash",
+            line_color="red",
+            annotation_text=f"Overall Mean: {overall_mean:.2f}",
+            row=i+1, col=1
+        )
+
+    fig.update_layout(
+        height=300*len(metrics),
+        title_text="Category Performance Comparison",
+        showlegend=False
+    )
+
+    fig.update_xaxes(tickangle=45)
+
+    fig.show()
+
+def plot_interactive_inventory_performance(df, x_col='quantity_sold', y_col='rating_average',
+                                         size_col='favourite_count', category_col='main_category',
+                                         sample_size=1000):
     """
-    Generate a comprehensive EDA visualization report.
+    Create interactive scatter plot of inventory vs performance with Plotly.
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+        x_col (str): X-axis column
+        y_col (str): Y-axis column
+        size_col (str): Size column
+        category_col (str): Category column for coloring
+        sample_size (int): Number of points to sample for performance
+    """
+    # Sample data for better performance
+    if len(df) > sample_size:
+        df_plot = df.sample(sample_size, random_state=42)
+    else:
+        df_plot = df
+
+    # Create hover text with product info
+    hover_text = []
+    for idx, row in df_plot.iterrows():
+        hover_text.append(
+            f"Product: {row.get('name', 'N/A')[:50]}...<br>"
+            f"Brand: {row.get('brand', 'N/A')}<br>"
+            f"Price: {row.get('price', 'N/A'):,.0f} VND<br>"
+            f"Rating: {row.get(y_col, 'N/A')}<br>"
+            f"Sales: {row.get(x_col, 'N/A')}"
+        )
+
+    fig = px.scatter(
+        df_plot,
+        x=x_col,
+        y=y_col,
+        size=size_col,
+        color=category_col,
+        hover_name="name",
+        hover_data=["brand", "price", "rating_average", "review_count"],
+        title=f"Interactive {x_col.replace('_', ' ').title()} vs {y_col.replace('_', ' ').title()}",
+        labels={
+            x_col: x_col.replace('_', ' ').title(),
+            y_col: y_col.replace('_', ' ').title(),
+            size_col: size_col.replace('_', ' ').title()
+        },
+        size_max=50
+    )
+
+    # Add trend line
+    fig.add_trace(
+        px.scatter(df_plot, x=x_col, y=y_col, trendline="ols").data[1]
+    )
+
+    fig.update_layout(
+        xaxis_title=x_col.replace('_', ' ').title(),
+        yaxis_title=y_col.replace('_', ' ').title()
+    )
+
+    fig.show()
+
+def plot_interactive_brand_comparison(df, brand_col='brand', metric='rating_average', top_n=20):
+    """
+    Create interactive brand comparison chart.
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+        brand_col (str): Brand column
+        metric (str): Metric to compare
+        top_n (int): Number of top brands to show
+    """
+    # Get top brands by product count
+    top_brands = df[brand_col].value_counts().head(top_n).index
+
+    # Filter data for top brands
+    df_top = df[df[brand_col].isin(top_brands)]
+
+    # Calculate brand statistics
+    brand_stats = df_top.groupby(brand_col)[metric].agg(['mean', 'count', 'std']).round(3)
+    brand_stats = brand_stats.reset_index().sort_values('mean', ascending=False)
+
+    fig = px.bar(
+        brand_stats,
+        x=brand_col,
+        y='mean',
+        error_y='std',
+        color='count',
+        title=f"Brand Performance: {metric.replace('_', ' ').title()} (Top {top_n} Brands)",
+        labels={
+            brand_col: "Brand",
+            'mean': f'Average {metric.replace("_", " ").title()}',
+            'count': 'Product Count'
+        },
+        hover_data=['std']
+    )
+
+    # Add overall mean line
+    overall_mean = df[metric].mean()
+    fig.add_hline(
+        y=overall_mean,
+        line_dash="dash",
+        line_color="red",
+        annotation_text=f"Overall Mean: {overall_mean:.3f}",
+        annotation_position="top right"
+    )
+
+    fig.update_xaxes(tickangle=45)
+    fig.show()
+
+def create_interactive_eda_dashboard(df):
+    """
+    Create a comprehensive interactive EDA dashboard.
 
     Args:
         df (pd.DataFrame): Input dataframe
     """
-    print("Generating EDA Visualization Report...")
+    print("Generating Interactive EDA Dashboard...")
 
-    # Price distributions
-    plot_price_distributions_by_category(df)
-
-    # Rating heatmaps
-    plot_rating_heatmaps(df)
-
-    # Inventory vs performance
-    plot_inventory_vs_performance(df)
-
-    # Correlation matrix
-    numeric_cols = ['price', 'original_price', 'rating_average', 'review_count',
-                   'favourite_count', 'quantity_sold', 'discount_pct', 'composite_score']
-    available_cols = [col for col in numeric_cols if col in df.columns]
-    plot_correlation_matrix(df, available_cols)
+    # Price distribution
+    plot_interactive_price_distribution(df)
 
     # Category performance
-    plot_category_performance(df)
+    plot_interactive_category_performance(df)
 
-    # Fulfillment impact
-    if 'fulfillment_type' in df.columns:
-        plot_fulfillment_impact(df)
+    # Inventory vs performance
+    plot_interactive_inventory_performance(df)
 
-    # Time trends if date available
-    if 'date_created' in df.columns:
-        plot_sales_trends_over_time(df)
+    # Brand comparison
+    plot_interactive_brand_comparison(df)
 
-    print("EDA report generation complete.")
+    print("Interactive EDA dashboard generation complete.")
